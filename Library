@@ -841,91 +841,174 @@ local Themes = {
 	Library.ToRich = function(self, Text, Color)
 		return `<font color="rgb({MathFloor(Color.R * 255)}, {MathFloor(Color.G * 255)}, {MathFloor(Color.B * 255)})">{Text}</font>`
 	end
+        
+local HttpService = game:GetService("HttpService")
 
-Library.GetConfig = function(self)
-    local Config = {}
+local function normalizeName(name)
+    if not name or name == "" then return nil end
+    return name:sub(-5) == ".json" and name or (name .. ".json")
+end
 
-    for Index, Value in pairs(Library.Flags) do
-        if type(Value) == "table" and Value.Key then
-            Config[Index] = { Key = tostring(Value.Key), Mode = Value.Mode }
-        elseif type(Value) == "table" and Value.Color then
-            Config[Index] = { Color = "#" .. Value.HexValue, Alpha = Value.Alpha }
+local function path(folder, file)
+    return folder .. "/" .. file
+end
+
+function Library:SerializeFlags()
+    local data = {}
+
+    for flag, value in pairs(self.Flags) do
+        if type(value) == "table" then
+            if value.Key then
+                data[flag] = {
+                    __type = "keybind",
+                    key = tostring(value.Key),
+                    mode = value.Mode
+                }
+            elseif value.Color then
+                data[flag] = {
+                    __type = "color",
+                    hex = "#" .. value.HexValue,
+                    alpha = value.Alpha
+                }
+            end
         else
-            Config[Index] = Value
+            data[flag] = value
         end
     end
 
-    return HttpService:JSONEncode(Config)
+    return data
 end
 
+function Library:GetConfig()
+    return HttpService:JSONEncode(self:SerializeFlags())
+end
 
-Library.LoadConfig = function(self, Config)
-    local Decoded = HttpService:JSONDecode(Config)
+function Library:ApplyConfig(config)
+    for flag, value in pairs(config) do
+        local setter = self.SetFlags[flag]
+        if not setter then continue end
 
-    for Index, Value in pairs(Decoded) do
-        local Setter = Library.SetFlags[Index]
-        if not Setter then continue end
-
-        if type(Value) == "table" and Value.Key then
-            Setter(Value)
-        elseif type(Value) == "table" and Value.Color then
-            Setter(Value.Color, Value.Alpha)
+        if type(value) == "table" and value.__type then
+            if value.__type == "keybind" then
+                setter({
+                    Key = value.key,
+                    Mode = value.mode
+                })
+            elseif value.__type == "color" then
+                setter(value.hex, value.alpha)
+            end
         else
-            Setter(Value)
+            setter(value)
         end
     end
 end
 
-
-Library.DeleteConfig = function(self, FileName)
-    local Path = Library.Folders.Configs .. "/" .. FileName
-    if isfile(Path) then
-        delfile(Path)
-    end
+function Library:LoadConfig(json)
+    local decoded = HttpService:JSONDecode(json)
+    self:ApplyConfig(decoded)
 end
 
-Library.RefreshConfigsList = function(self, Element)
-    local List = {}
+function Library:SaveConfig(name)
+    local file = normalizeName(name)
+    if not file then return end
 
-    for _, File in ipairs(listfiles(Library.Folders.Configs)) do
-        if File:sub(-5) == ".json" then
-            table.insert(List, File:match("[^/\\]+$"))
-        end
-    end
+    writefile(path(self.Folders.Configs, file), self:GetConfig())
 
-    table.sort(List)
-    Element:Refresh(List)
+    self:Notification({
+        Title = "Configs",
+        Description = "Saved: " .. file,
+        Duration = 4
+    })
 end
 
-Library.TryAutoload = function(self)
-    local Path = self.Folders.Configs .. "/autoload.txt"
-    if not isfile(Path) then return end
+function Library:LoadConfigFromFile(name)
+    local file = normalizeName(name)
+    if not file then return end
 
-    local ConfigName = readfile(Path)
-    local ConfigPath = self.Folders.Configs .. "/" .. ConfigName
+    local fullPath = path(self.Folders.Configs, file)
+    if not isfile(fullPath) then return end
 
-    if isfile(ConfigPath) then
-        self:LoadConfig(readfile(ConfigPath))
+    self:LoadConfig(readfile(fullPath))
+
+    self:Notification({
+        Title = "Configs",
+        Description = "Loaded: " .. file,
+        Duration = 4
+    })
+end
+
+function Library:DeleteConfig(name)
+    local file = normalizeName(name)
+    if not file then return end
+
+    local fullPath = path(self.Folders.Configs, file)
+    if isfile(fullPath) then
+        delfile(fullPath)
 
         self:Notification({
             Title = "Configs",
-            Description = "Autoloaded: " .. ConfigName,
+            Description = "Deleted: " .. file,
+            Duration = 4
+        })
+    end
+end
+
+function Library:GetConfigs()
+    local list = {}
+
+    for _, file in ipairs(listfiles(self.Folders.Configs)) do
+        if file:sub(-5) == ".json" then
+            table.insert(list, file:match("[^/\\]+$"))
+        end
+    end
+
+    table.sort(list)
+    return list
+end
+
+function Library:RefreshConfigsList(element)
+    if not element then return end
+    element:Refresh(self:GetConfigs())
+end
+
+function Library:SetAutoload(name)
+    local file = normalizeName(name)
+    local autoPath = path(self.Folders.Configs, "autoload.txt")
+
+    if not file then
+        if isfile(autoPath) then
+            delfile(autoPath)
+        end
+        return
+    end
+
+    writefile(autoPath, file)
+
+    self:Notification({
+        Title = "Configs",
+        Description = "Autoload set: " .. file,
+        Duration = 4
+    })
+end
+
+function Library:TryAutoload()
+    local autoPath = path(self.Folders.Configs, "autoload.txt")
+    if not isfile(autoPath) then return end
+
+    local file = readfile(autoPath)
+    local fullPath = path(self.Folders.Configs, file)
+
+    if isfile(fullPath) then
+        self:LoadConfig(readfile(fullPath))
+
+        self:Notification({
+            Title = "Configs",
+            Description = "Autoloaded: " .. file,
             Duration = 5
         })
     end
 end
 
-
-Library.SetAutoload = function(self, ConfigName)
-    if not ConfigName then
-        if isfile(self.Folders.Configs .. "/autoload.txt") then
-            delfile(self.Folders.Configs .. "/autoload.txt")
-        end
-        return
-    end
-
-    writefile(self.Folders.Configs .. "/autoload.txt", ConfigName)
-end
 
 
 
@@ -7300,10 +7383,9 @@ end
 
 Library.CreateSettingsPage = function(self, Window, KeybindList)
     local Page = Window:Page({ Name = "Settings", Icon = "122669828593160" })
-
     local ConfigsSection = Page:Section({ Name = "Configs", Side = 2 })
 
-    local ConfigName
+    local ConfigName = ""
     local ConfigSelected
 
     local ConfigsDropdown = ConfigsSection:Listbox({
@@ -7328,26 +7410,20 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
         Name = "Autoload",
         Flag = "ConfigAutoload",
         Callback = function(Value)
-            Library:SetAutoload(Value and ConfigSelected)
+            if Value then
+                Library:SetAutoload(ConfigSelected)
+            else
+                Library:SetAutoload(nil)
+            end
         end
     })
 
     ConfigsSection:Button({
         Name = "Create",
         Callback = function()
-            if not ConfigName or ConfigName == "" then return end
-
-            local Path = Library.Folders.Configs .. "/" .. ConfigName .. ".json"
-            if isfile(Path) then return end
-
-            writefile(Path, Library:GetConfig())
+            if ConfigName == "" then return end
+            Library:SaveConfig(ConfigName)
             Library:RefreshConfigsList(ConfigsDropdown)
-
-            Library:Notification({
-                Title = "Configs",
-                Description = "Created config: " .. ConfigName,
-                Duration = 4
-            })
         end
     })
 
@@ -7355,7 +7431,6 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
         Name = "Load",
         Callback = function()
             if not ConfigSelected then return end
-
             Library:LoadConfigFromFile(ConfigSelected)
         end
     })
@@ -7364,14 +7439,7 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
         Name = "Save",
         Callback = function()
             if not ConfigSelected then return end
-
-            writefile(Library.Folders.Configs .. "/" .. ConfigSelected, Library:GetConfig())
-
-            Library:Notification({
-                Title = "Configs",
-                Description = "Saved: " .. ConfigSelected,
-                Duration = 4
-            })
+            Library:SaveConfig(ConfigSelected)
         end
     })
 
@@ -7379,15 +7447,8 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
         Name = "Delete",
         Callback = function()
             if not ConfigSelected then return end
-
             Library:DeleteConfig(ConfigSelected)
             Library:RefreshConfigsList(ConfigsDropdown)
-
-            Library:Notification({
-                Title = "Configs",
-                Description = "Deleted: " .. ConfigSelected,
-                Duration = 4
-            })
         end
     })
 
@@ -7401,6 +7462,8 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
     Library:RefreshConfigsList(ConfigsDropdown)
     return Page
 end
+
+
 end
 
 getgenv().Library = Library
