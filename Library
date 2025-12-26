@@ -7513,7 +7513,7 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
         Placeholder = "Config name",
         Finished = true,
         Callback = function(Value)
-            textboxcfg.Default = value
+            textboxcfg:Set(Value)
             state.configName = Value
         end
     })
