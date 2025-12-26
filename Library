@@ -7486,7 +7486,6 @@ end
         end
     end
 
--- Improved settings page with better state management
 Library.CreateSettingsPage = function(self, Window, KeybindList)
     local Page = Window:Page({ Name = "Settings", Icon = "122669828593160" })
     local ConfigsSection = Page:Section({ Name = "Configs", Side = 2 })
@@ -7498,7 +7497,6 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
         autoloadEnabled = false
     }
     
-    -- Update autoload toggle based on current autoload file
     local function updateAutoloadState()
         local currentAutoload = Library:GetAutoloadConfig()
         state.autoloadEnabled = currentAutoload ~= nil
@@ -7515,7 +7513,6 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
         Callback = function(Value)
             state.selectedConfig = Value
             
-            -- Auto-update autoload toggle when selection changes
             local currentAutoload = Library:GetAutoloadConfig()
             state.autoloadEnabled = currentAutoload == Value
             
@@ -7527,6 +7524,8 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
     
     ConfigsSection:Textbox({
         Flag = "ConfigsName",
+        Default = "Test Config",
+        Numeric = false,
         Placeholder = "Config name",
         Finished = true,
         Callback = function(Value)
@@ -7580,11 +7579,6 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
         Name = "Load",
         Callback = function()
             if not state.selectedConfig then 
-                Library:Notification({
-                    Title = "Configs",
-                    Description = "Please select a config",
-                    Duration = 3
-                })
                 return 
             end
             Library:LoadConfigFromFile(state.selectedConfig)
@@ -7595,11 +7589,6 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
         Name = "Save",
         Callback = function()
             if not state.selectedConfig then 
-                Library:Notification({
-                    Title = "Configs",
-                    Description = "Please select a config",
-                    Duration = 3
-                })
                 return 
             end
             Library:SaveConfig(state.selectedConfig)
@@ -7610,11 +7599,6 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
         Name = "Delete",
         Callback = function()
             if not state.selectedConfig then 
-                Library:Notification({
-                    Title = "Configs",
-                    Description = "Please select a config",
-                    Duration = 3
-                })
                 return 
             end
             
