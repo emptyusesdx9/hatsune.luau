@@ -970,12 +970,6 @@ function Library:SaveConfig(name)
     
     if writefile then
         writefile(configPath, configData)
-        
-        self:Notification({
-            Title = "Configs",
-            Description = "Saved: " .. file,
-            Duration = 4
-        })
         return true
     end
     
@@ -992,21 +986,11 @@ function Library:LoadConfigFromFile(name)
         local content = readfile(configPath)
         if content and content ~= "" then
             self:LoadConfig(content)
-            
-            self:Notification({
-                Title = "Configs",
-                Description = "Loaded: " .. file,
-                Duration = 4
-            })
+        
             return true
         end
     end
-    
-    self:Notification({
-        Title = "Configs",
-        Description = "Config not found: " .. file,
-        Duration = 4
-    })
+
     return false
 end
 
@@ -7522,13 +7506,14 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
         end
     })
     
-    ConfigsSection:Textbox({
+    local textboxcfg = ConfigsSection:Textbox({
         Flag = "ConfigsName",
         Default = "Test Config",
         Numeric = false,
         Placeholder = "Config name",
         Finished = true,
         Callback = function(Value)
+            textboxcfg.Default = value
             state.configName = Value
         end
     })
@@ -7556,11 +7541,7 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
         Name = "Create",
         Callback = function()
             if state.configName == "" then 
-                Library:Notification({
-                    Title = "Configs",
-                    Description = "Please enter a config name",
-                    Duration = 3
-                })
+
                 return 
             end
             
