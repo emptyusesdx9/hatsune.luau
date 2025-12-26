@@ -7493,12 +7493,11 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
     
     local textboxcfg = ConfigsSection:Textbox({
         Flag = "ConfigsName",
-        Default = "Test Config",
+        Default = "",
         Numeric = false,
         Placeholder = "Config name",
         Finished = true,
         Callback = function(Value)
-            textboxcfg:Set(Value)
             state.configName = Value
         end
     })
@@ -7515,9 +7514,10 @@ Library.CreateSettingsPage = function(self, Window, KeybindList)
             end
             
             if Library:SaveConfig(state.configName) then
-                refreshConfigs()
+                state.selectedConfig = state.configName
                 state.configName = ""
                 textboxcfg:Set("")
+                refreshConfigs()
             end
         end
     })
