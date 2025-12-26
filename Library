@@ -844,169 +844,274 @@ local Themes = {
         
 local HttpService = game:GetService("HttpService")
 
+-- Cache frequently used patterns and strings
+local JSON_EXTENSION = ".json"
+local AUTOLOAD_FILE = "autoload.txt"
+local PATH_SEPARATOR = "/"
+
 local function normalizeName(name)
     if not name or name == "" then return nil end
-    return name:sub(-5) == ".json" and name or (name .. ".json")
+    -- More efficient pattern matching for extension check
+    return name:sub(-5) == JSON_EXTENSION and name or (name .. JSON_EXTENSION)
 end
 
-local function path(folder, file)
-    return folder .. "/" .. file
+local function joinPath(folder, file)
+    return folder .. PATH_SEPARATOR .. file
 end
 
-function Library:SerializeFlags()
-    local data = {}
+-- Helper function to safely encode/decode JSON with error handling
+local function safeJSONEncode(data)
+    local success, result = pcall(HttpService.JSONEncode, HttpService, data)
+    return success and result or "{}"
+end
 
-    for flag, value in pairs(self.Flags) do
-        if type(value) == "table" then
-            if value.Key then
-                data[flag] = {
-                    __type = "keybind",
-                    key = tostring(value.Key),
-                    mode = value.Mode
-                }
-            elseif value.Color then
-                data[flag] = {
-                    __type = "color",
-                    hex = "#" .. value.HexValue,
-                    alpha = value.Alpha
-                }
-            end
-        else
-            data[flag] = value
+local function safeJSONDecode(json)
+    local success, result = pcall(HttpService.JSONDecode, HttpService, json)
+    return success and result or {}
+end
+
+-- Serialization functions separated for clarity and reusability
+local function serializeFlag(flag, value)
+    if type(value) == "table" then
+        if value.Key then
+            return {
+                __type = "keybind",
+                key = tostring(value.Key),
+                mode = value.Mode
+            }
+        elseif value.Color then
+            return {
+                __type = "color",
+                hex = value.HexValue and "#" .. value.HexValue or "#FFFFFF",
+                alpha = value.Alpha or 1
+            }
         end
     end
+    return value
+end
 
+local function deserializeFlag(value, setter)
+    if type(value) == "table" and value.__type then
+        if value.__type == "keybind" and setter then
+            setter({
+                Key = value.key,
+                Mode = value.mode
+            })
+            return true
+        elseif value.__type == "color" and setter then
+            setter(value.hex, value.alpha)
+            return true
+        end
+    elseif setter then
+        setter(value)
+        return true
+    end
+    return false
+end
+
+-- Optimized config methods
+function Library:SerializeFlags()
+    local data = {}
+    local flags = self.Flags
+    
+    for flag, value in pairs(flags) do
+        data[flag] = serializeFlag(flag, value)
+    end
+    
     return data
 end
 
 function Library:GetConfig()
-    return HttpService:JSONEncode(self:SerializeFlags())
+    return safeJSONEncode(self:SerializeFlags())
 end
 
 function Library:ApplyConfig(config)
+    local setFlags = self.SetFlags
+    local appliedCount = 0
+    
     for flag, value in pairs(config) do
-        local setter = self.SetFlags[flag]
-        if not setter then continue end
-
-        if type(value) == "table" and value.__type then
-            if value.__type == "keybind" then
-                setter({
-                    Key = value.key,
-                    Mode = value.mode
-                })
-            elseif value.__type == "color" then
-                setter(value.hex, value.alpha)
+        local setter = setFlags[flag]
+        if setter then
+            if deserializeFlag(value, setter) then
+                appliedCount = appliedCount + 1
             end
-        else
-            setter(value)
         end
     end
+    
+    return appliedCount
 end
 
 function Library:LoadConfig(json)
-    local decoded = HttpService:JSONDecode(json)
-    self:ApplyConfig(decoded)
+    local decoded = safeJSONDecode(json)
+    local applied = self:ApplyConfig(decoded)
+    
+    if applied > 0 then
+        self:Notification({
+            Title = "Configs",
+            Description = string.format("Applied %d settings", applied),
+            Duration = 3
+        })
+    end
 end
 
 function Library:SaveConfig(name)
     local file = normalizeName(name)
-    if not file then return end
+    if not file then 
+        self:Notification({
+            Title = "Configs",
+            Description = "Invalid config name",
+            Duration = 3
+        })
+        return false
+    end
 
-    writefile(path(self.Folders.Configs, file), self:GetConfig())
-
-    self:Notification({
-        Title = "Configs",
-        Description = "Saved: " .. file,
-        Duration = 4
-    })
+    local configPath = joinPath(self.Folders.Configs, file)
+    local configData = self:GetConfig()
+    
+    if writefile then
+        writefile(configPath, configData)
+        
+        self:Notification({
+            Title = "Configs",
+            Description = "Saved: " .. file,
+            Duration = 4
+        })
+        return true
+    end
+    
+    return false
 end
 
 function Library:LoadConfigFromFile(name)
     local file = normalizeName(name)
-    if not file then return end
+    if not file then return false end
 
-    local fullPath = path(self.Folders.Configs, file)
-    if not isfile(fullPath) then return end
-
-    self:LoadConfig(readfile(fullPath))
-
+    local configPath = joinPath(self.Folders.Configs, file)
+    
+    if isfile and isfile(configPath) then
+        local content = readfile(configPath)
+        if content and content ~= "" then
+            self:LoadConfig(content)
+            
+            self:Notification({
+                Title = "Configs",
+                Description = "Loaded: " .. file,
+                Duration = 4
+            })
+            return true
+        end
+    end
+    
     self:Notification({
         Title = "Configs",
-        Description = "Loaded: " .. file,
+        Description = "Config not found: " .. file,
         Duration = 4
     })
+    return false
 end
 
 function Library:DeleteConfig(name)
     local file = normalizeName(name)
-    if not file then return end
+    if not file then return false end
 
-    local fullPath = path(self.Folders.Configs, file)
-    if isfile(fullPath) then
-        delfile(fullPath)
-
+    local configPath = joinPath(self.Folders.Configs, file)
+    
+    if isfile and isfile(configPath) then
+        delfile(configPath)
+        
         self:Notification({
             Title = "Configs",
             Description = "Deleted: " .. file,
             Duration = 4
         })
+        return true
     end
+    
+    return false
 end
 
-function Library:GetConfigs()
-    local list = {}
+-- Optimized config listing with caching
+local configsCache = nil
+local cacheTimestamp = 0
+local CACHE_DURATION = 5 -- seconds
 
-    for _, file in ipairs(listfiles(self.Folders.Configs)) do
-        if file:sub(-5) == ".json" then
-            table.insert(list, file:match("[^/\\]+$"))
+function Library:GetConfigs(forceRefresh)
+    local currentTime = tick()
+    
+    if not forceRefresh and configsCache and (currentTime - cacheTimestamp) < CACHE_DURATION then
+        return configsCache
+    end
+    
+    local list = {}
+    
+    if listfiles then
+        local configFolder = self.Folders.Configs
+        local files = listfiles(configFolder) or {}
+        
+        for _, file in ipairs(files) do
+            if file:sub(-5) == JSON_EXTENSION then
+                -- More efficient filename extraction
+                local fileName = file:match("[^/\\]+$")
+                if fileName then
+                    table.insert(list, fileName)
+                end
+            end
         end
     end
-
+    
     table.sort(list)
+    configsCache = list
+    cacheTimestamp = currentTime
+    
     return list
 end
 
 function Library:RefreshConfigsList(element)
-    if not element then return end
-    element:Refresh(self:GetConfigs())
+    if element and element.Refresh then
+        element:Refresh(self:GetConfigs(true))
+    end
 end
 
 function Library:SetAutoload(name)
     local file = normalizeName(name)
-    local autoPath = path(self.Folders.Configs, "autoload.txt")
-
+    local autoPath = joinPath(self.Folders.Configs, AUTOLOAD_FILE)
+    
     if not file then
-        if isfile(autoPath) then
+        if isfile and isfile(autoPath) then
             delfile(autoPath)
         end
-        return
+        return false
     end
+    
+    if writefile then
+        writefile(autoPath, file)
+        
+        self:Notification({
+            Title = "Configs",
+            Description = "Autoload set: " .. file,
+            Duration = 4
+        })
+        return true
+    end
+    
+    return false
+end
 
-    writefile(autoPath, file)
-
-    self:Notification({
-        Title = "Configs",
-        Description = "Autoload set: " .. file,
-        Duration = 4
-    })
+function Library:GetAutoloadConfig()
+    local autoPath = joinPath(self.Folders.Configs, AUTOLOAD_FILE)
+    
+    if isfile and isfile(autoPath) then
+        return readfile(autoPath)
+    end
+    
+    return nil
 end
 
 function Library:TryAutoload()
-    local autoPath = path(self.Folders.Configs, "autoload.txt")
-    if not isfile(autoPath) then return end
+    local autoConfig = self:GetAutoloadConfig()
+    if not autoConfig then return false end
 
-    local file = readfile(autoPath)
-    local fullPath = path(self.Folders.Configs, file)
-
-    if isfile(fullPath) then
-        self:LoadConfig(readfile(fullPath))
-
-        self:Notification({
-            Title = "Configs",
-            Description = "Autoloaded: " .. file,
-            Duration = 5
-        })
-    end
+    return self:LoadConfigFromFile(autoConfig)
 end
 
 
@@ -7381,85 +7486,154 @@ end
         end
     end
 
+-- Improved settings page with better state management
 Library.CreateSettingsPage = function(self, Window, KeybindList)
     local Page = Window:Page({ Name = "Settings", Icon = "122669828593160" })
     local ConfigsSection = Page:Section({ Name = "Configs", Side = 2 })
-
-    local ConfigName = ""
-    local ConfigSelected
-
+    
+    -- State management
+    local state = {
+        selectedConfig = nil,
+        configName = "",
+        autoloadEnabled = false
+    }
+    
+    -- Update autoload toggle based on current autoload file
+    local function updateAutoloadState()
+        local currentAutoload = Library:GetAutoloadConfig()
+        state.autoloadEnabled = currentAutoload ~= nil
+        
+        if ConfigAutoloadToggle then
+            ConfigAutoloadToggle:Set(state.autoloadEnabled)
+        end
+    end
+    
     local ConfigsDropdown = ConfigsSection:Listbox({
         Flag = "ConfigsList",
         Items = {},
         Multi = false,
         Callback = function(Value)
-            ConfigSelected = Value
+            state.selectedConfig = Value
+            
+            -- Auto-update autoload toggle when selection changes
+            local currentAutoload = Library:GetAutoloadConfig()
+            state.autoloadEnabled = currentAutoload == Value
+            
+            if ConfigAutoloadToggle then
+                ConfigAutoloadToggle:Set(state.autoloadEnabled)
+            end
         end
     })
-
+    
     ConfigsSection:Textbox({
         Flag = "ConfigsName",
-        Placeholder = "Name",
+        Placeholder = "Config name",
         Finished = true,
         Callback = function(Value)
-            ConfigName = Value
+            state.configName = Value
         end
     })
-
-    ConfigsSection:Toggle({
+    
+    local ConfigAutoloadToggle = ConfigsSection:Toggle({
         Name = "Autoload",
         Flag = "ConfigAutoload",
         Callback = function(Value)
             if Value then
-                Library:SetAutoload(ConfigSelected)
+                Library:SetAutoload(state.selectedConfig)
             else
                 Library:SetAutoload(nil)
             end
+            state.autoloadEnabled = Value
         end
     })
-
+    
+    -- Helper function to refresh and reset state
+    local function refreshConfigs()
+        Library:RefreshConfigsList(ConfigsDropdown)
+        updateAutoloadState()
+    end
+    
     ConfigsSection:Button({
         Name = "Create",
         Callback = function()
-            if ConfigName == "" then return end
-            Library:SaveConfig(ConfigName)
-            Library:RefreshConfigsList(ConfigsDropdown)
+            if state.configName == "" then 
+                Library:Notification({
+                    Title = "Configs",
+                    Description = "Please enter a config name",
+                    Duration = 3
+                })
+                return 
+            end
+            
+            if Library:SaveConfig(state.configName) then
+                refreshConfigs()
+                state.configName = ""
+                -- Clear the textbox
+                if ConfigsNameTextbox then
+                    ConfigsNameTextbox:Set("")
+                end
+            end
         end
     })
-
+    
     ConfigsSection:Button({
         Name = "Load",
         Callback = function()
-            if not ConfigSelected then return end
-            Library:LoadConfigFromFile(ConfigSelected)
+            if not state.selectedConfig then 
+                Library:Notification({
+                    Title = "Configs",
+                    Description = "Please select a config",
+                    Duration = 3
+                })
+                return 
+            end
+            Library:LoadConfigFromFile(state.selectedConfig)
         end
     })
-
+    
     ConfigsSection:Button({
         Name = "Save",
         Callback = function()
-            if not ConfigSelected then return end
-            Library:SaveConfig(ConfigSelected)
+            if not state.selectedConfig then 
+                Library:Notification({
+                    Title = "Configs",
+                    Description = "Please select a config",
+                    Duration = 3
+                })
+                return 
+            end
+            Library:SaveConfig(state.selectedConfig)
         end
     })
-
+    
     ConfigsSection:Button({
         Name = "Delete",
         Callback = function()
-            if not ConfigSelected then return end
-            Library:DeleteConfig(ConfigSelected)
-            Library:RefreshConfigsList(ConfigsDropdown)
+            if not state.selectedConfig then 
+                Library:Notification({
+                    Title = "Configs",
+                    Description = "Please select a config",
+                    Duration = 3
+                })
+                return 
+            end
+            
+            if Library:DeleteConfig(state.selectedConfig) then
+                refreshConfigs()
+                state.selectedConfig = nil
+            end
         end
     })
-
+    
     ConfigsSection:Button({
         Name = "Refresh",
-        Callback = function()
-            Library:RefreshConfigsList(ConfigsDropdown)
-        end
+        Callback = refreshConfigs
     })
-
-    Library:RefreshConfigsList(ConfigsDropdown)
+    
+    
+    -- Initial setup
+    refreshConfigs()
+    
     return Page
 end
 
