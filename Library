@@ -842,79 +842,92 @@ local Themes = {
 		return `<font color="rgb({MathFloor(Color.R * 255)}, {MathFloor(Color.G * 255)}, {MathFloor(Color.B * 255)})">{Text}</font>`
 	end
 
-    Library.GetConfig = function(self)
-        local Config = { } 
+Library.GetConfig = function(self)
+    local Config = {}
 
-        local Success, Result = Library:SafeCall(function()
-            for Index, Value in Library.Flags do 
-                if type(Value) == "table" and Value.Key then
-                    Config[Index] = {Key = tostring(Value.Key), Mode = Value.Mode}
-                elseif type(Value) == "table" and Value.Color then
-                    Config[Index] = {Color = "#" .. Value.HexValue, Alpha = Value.Alpha}
-                else
-                    Config[Index] = Value
-                end
-            end
-        end)
-
-        return HttpService:JSONEncode(Config)
-    end
-
-    Library.LoadConfig = function(self, Config)
-        local Decoded = HttpService:JSONDecode(Config)
-
-        local Success, Result = Library:SafeCall(function()
-            for Index, Value in Decoded do 
-                local SetFunction = Library.SetFlags[Index]
-
-                if not SetFunction then
-                    continue
-                end
-
-                if type(Value) == "table" and Value.Key then 
-                    SetFunction(Value)
-                elseif type(Value) == "table" and Value.Color then
-                    SetFunction(Value.Color, Value.Alpha)
-                else
-                    SetFunction(Value)
-                end
-            end
-        end)
-
-        return Success, Result
-    end
-
-    Library.DeleteConfig = function(self, Config)
-        if isfile(Library.Folders.Configs .. "/" .. Config) then 
-            delfile(Library.Folders.Configs .. "/" .. Config)
-        end
-    end
-
-    Library.RefreshConfigsList = function(self, Element)
-        local CurrentList = { }
-        local List = { }
-
-        local ConfigFolderName = StringGSub(Library.Folders.Configs, Library.Folders.Directory .. "/", "")
-
-        for Index, Value in listfiles(Library.Folders.Configs) do
-            local FileName = StringGSub(Value, Library.Folders.Directory .. "\\" .. ConfigFolderName .. "\\", "")
-            List[Index] = FileName
-        end
-
-        local IsNew = #List ~= CurrentList
-
-        if not IsNew then
-            for Index = 1, #List do
-                if List[Index] ~= CurrentList[Index] then
-                    IsNew = true
-                    break
-                end
-            end
+    for Index, Value in pairs(Library.Flags) do
+        if type(Value) == "table" and Value.Key then
+            Config[Index] = { Key = tostring(Value.Key), Mode = Value.Mode }
+        elseif type(Value) == "table" and Value.Color then
+            Config[Index] = { Color = "#" .. Value.HexValue, Alpha = Value.Alpha }
         else
-            CurrentList = List
-            Element:Refresh(CurrentList)
+            Config[Index] = Value
         end
     end
+
+    return HttpService:JSONEncode(Config)
+end
+
+
+Library.LoadConfig = function(self, Config)
+    local Decoded = HttpService:JSONDecode(Config)
+
+    for Index, Value in pairs(Decoded) do
+        local Setter = Library.SetFlags[Index]
+        if not Setter then continue end
+
+        if type(Value) == "table" and Value.Key then
+            Setter(Value)
+        elseif type(Value) == "table" and Value.Color then
+            Setter(Value.Color, Value.Alpha)
+        else
+            Setter(Value)
+        end
+    end
+end
+
+
+Library.DeleteConfig = function(self, FileName)
+    local Path = Library.Folders.Configs .. "/" .. FileName
+    if isfile(Path) then
+        delfile(Path)
+    end
+end
+
+Library.RefreshConfigsList = function(self, Element)
+    local List = {}
+
+    for _, File in ipairs(listfiles(Library.Folders.Configs)) do
+        if File:sub(-5) == ".json" then
+            table.insert(List, File:match("[^/\\]+$"))
+        end
+    end
+
+    table.sort(List)
+    Element:Refresh(List)
+end
+
+Library.TryAutoload = function(self)
+    local Path = self.Folders.Configs .. "/autoload.txt"
+    if not isfile(Path) then return end
+
+    local ConfigName = readfile(Path)
+    local ConfigPath = self.Folders.Configs .. "/" .. ConfigName
+
+    if isfile(ConfigPath) then
+        self:LoadConfig(readfile(ConfigPath))
+
+        self:Notification({
+            Title = "Configs",
+            Description = "Autoloaded: " .. ConfigName,
+            Duration = 5
+        })
+    end
+end
+
+
+Library.SetAutoload = function(self, ConfigName)
+    if not ConfigName then
+        if isfile(self.Folders.Configs .. "/autoload.txt") then
+            delfile(self.Folders.Configs .. "/autoload.txt")
+        end
+        return
+    end
+
+    writefile(self.Folders.Configs .. "/autoload.txt", ConfigName)
+end
+
+
 
     Library.ChangeItemTheme = function(self, Item, Properties)
         Item = Item.Instance or Item
@@ -7285,82 +7298,109 @@ local Themes = {
         end
     end
 
-    Library.CreateSettingsPage = function(self, Window, KeybindList)
-        local Page = Window:Page({Name = "Settings", Icon = "122669828593160"})
+Library.CreateSettingsPage = function(self, Window, KeybindList)
+    local Page = Window:Page({ Name = "Settings", Icon = "122669828593160" })
 
-        local ConfigsSection = Page:Section({Name = "Configs", Side = 2}) do 
-            local ConfigName
-            local ConfigSelected
+    local ConfigsSection = Page:Section({ Name = "Configs", Side = 2 })
 
-            local ConfigsDropdown = ConfigsSection:Listbox({
-                Flag = "ConfigsList", 
-                Items = { }, 
-                Multi = false,
-                Callback = function(Value)
-                    ConfigSelected = Value
-                end
-            })
-            
-            ConfigsSection:Textbox({
-                Flag = "ConfigsName",
-                Placeholder = "Name",
-                Numeric = false,
-                Finished = true,
-                Callback = function(Value)
-                    ConfigName = Value
-                end
-            })
+    local ConfigName
+    local ConfigSelected
 
-            ConfigsSection:Button({
-                Name = "Create",
-                Callback = function()
-                    if ConfigName and ConfigName ~= "" then
-                        if not isfile(Library.Folders.Configs .. "/" .. ConfigName .. ".json") then
-                            writefile(Library.Folders.Configs .. "/" .. ConfigName .. ".json", Library:GetConfig())
-                            Library:RefreshConfigsList(ConfigsDropdown)
-                        end
-                    end
-                end
-            })
+    local ConfigsDropdown = ConfigsSection:Listbox({
+        Flag = "ConfigsList",
+        Items = {},
+        Multi = false,
+        Callback = function(Value)
+            ConfigSelected = Value
+        end
+    })
 
-            ConfigsSection:Button({
-                Name = "Delete",
-                Callback = function()
-                    if ConfigSelected then
-                        Library:DeleteConfig(ConfigSelected)
-                        Library:RefreshConfigsList(ConfigsDropdown)
-                    end
-                end
-            })
+    ConfigsSection:Textbox({
+        Flag = "ConfigsName",
+        Placeholder = "Name",
+        Finished = true,
+        Callback = function(Value)
+            ConfigName = Value
+        end
+    })
 
-            ConfigsSection:Button({
-                Name = "Load",
-                Callback = function()
-                    if ConfigSelected then
-                        Library:LoadConfig(readfile(Library.Folders.Configs .. "/" .. ConfigSelected))
-                    end
-                end
-            })
+    ConfigsSection:Toggle({
+        Name = "Autoload",
+        Flag = "ConfigAutoload",
+        Callback = function(Value)
+            Library:SetAutoload(Value and ConfigSelected)
+        end
+    })
 
-            ConfigsSection:Button({
-                Name = "Save",
-                Callback = function()
-                    if ConfigSelected then
-                        writefile(Library.Folders.Configs .. "/" .. ConfigSelected, Library:GetConfig())
-                    end
-                end
-            })
+    ConfigsSection:Button({
+        Name = "Create",
+        Callback = function()
+            if not ConfigName or ConfigName == "" then return end
 
-            ConfigsSection:Button({
-                Name = "Refresh",
-                Callback = function()
-                    Library:RefreshConfigsList(ConfigsDropdown)
-                end
+            local Path = Library.Folders.Configs .. "/" .. ConfigName .. ".json"
+            if isfile(Path) then return end
+
+            writefile(Path, Library:GetConfig())
+            Library:RefreshConfigsList(ConfigsDropdown)
+
+            Library:Notification({
+                Title = "Configs",
+                Description = "Created config: " .. ConfigName,
+                Duration = 4
             })
         end
+    })
 
-        return Page
-    end
+    ConfigsSection:Button({
+        Name = "Load",
+        Callback = function()
+            if not ConfigSelected then return end
+
+            Library:LoadConfigFromFile(ConfigSelected)
+        end
+    })
+
+    ConfigsSection:Button({
+        Name = "Save",
+        Callback = function()
+            if not ConfigSelected then return end
+
+            writefile(Library.Folders.Configs .. "/" .. ConfigSelected, Library:GetConfig())
+
+            Library:Notification({
+                Title = "Configs",
+                Description = "Saved: " .. ConfigSelected,
+                Duration = 4
+            })
+        end
+    })
+
+    ConfigsSection:Button({
+        Name = "Delete",
+        Callback = function()
+            if not ConfigSelected then return end
+
+            Library:DeleteConfig(ConfigSelected)
+            Library:RefreshConfigsList(ConfigsDropdown)
+
+            Library:Notification({
+                Title = "Configs",
+                Description = "Deleted: " .. ConfigSelected,
+                Duration = 4
+            })
+        end
+    })
+
+    ConfigsSection:Button({
+        Name = "Refresh",
+        Callback = function()
+            Library:RefreshConfigsList(ConfigsDropdown)
+        end
+    })
+
+    Library:RefreshConfigsList(ConfigsDropdown)
+    return Page
+end
 end
 
 getgenv().Library = Library
