@@ -7373,7 +7373,7 @@ function Library:DeleteConfig(name)
     if isfile and isfile(configPath) then
         delfile(configPath)
         
-        self:Notification({
+        Library.Notification({
             Title = "Configs",
             Description = "Deleted: " .. file,
             Duration = 4,
@@ -7431,7 +7431,7 @@ function Library:SetAutoload(name)
     if not name then
         if isfile and isfile(autoPath) then
             delfile(autoPath)
-            self:Notification({
+            Library.Notification({
                 Title = "Configs",
                 Description = "Autoload cleared",
                 Duration = 3,
@@ -7447,7 +7447,7 @@ function Library:SetAutoload(name)
     if writefile then
         writefile(autoPath, file)
         
-        self:Notification({
+        Library.Notification({
             Title = "Configs",
             Description = "Autoload set: " .. file,
             Duration = 4,
