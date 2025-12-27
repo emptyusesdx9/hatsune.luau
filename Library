@@ -7376,7 +7376,8 @@ function Library:DeleteConfig(name)
         self:Notification({
             Title = "Configs",
             Description = "Deleted: " .. file,
-            Duration = 4
+            Duration = 4,
+            Icon = "73789337996373"
         })
         return true
     end
@@ -7433,7 +7434,8 @@ function Library:SetAutoload(name)
             self:Notification({
                 Title = "Configs",
                 Description = "Autoload cleared",
-                Duration = 3
+                Duration = 3,
+                                Icon = "73789337996373"
             })
         end
         return true
@@ -7448,7 +7450,8 @@ function Library:SetAutoload(name)
         self:Notification({
             Title = "Configs",
             Description = "Autoload set: " .. file,
-            Duration = 4
+            Duration = 4,
+                            Icon = "73789337996373"
         })
         return true
     end
