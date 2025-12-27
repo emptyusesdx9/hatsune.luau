@@ -2162,7 +2162,7 @@ local Themes = {
             
             task.wait(0.2)
 
-            Items["Notification"].Instance.AutomaticSize = Enum.AutomaticSize.Y
+            Items["Notification"].Instance.AutomaticSize = Enum.AutomaticSize.XY
 
             Library:Thread(function()
                 for Index, Value in Items do 
@@ -7476,115 +7476,6 @@ function Library:TryAutoload()
     return self:LoadConfigFromFile(autoConfig)
 end
 
-Library.CreateSettingsPage = function(self, Window, KeybindList)
-    local Page = Window:Page({ Name = "Settings", Icon = "122669828593160" })
-    local ConfigsSection = Page:Section({ Name = "Configs", Side = 2 })
-    
-    local state = {
-        selectedConfig = nil,
-        configName = ""
-    }
-    
-    local ConfigsDropdown = ConfigsSection:Listbox({
-        Flag = "ConfigsList",
-        Items = {},
-        Multi = false,
-        Callback = function(Value)
-            state.selectedConfig = Value
-        end
-    })
-    
-    local textboxcfg = ConfigsSection:Textbox({
-        Flag = "ConfigsName",
-        Default = "",
-        Numeric = false,
-        Placeholder = "Config name",
-        Finished = true,
-        Callback = function(Value)
-            state.configName = Value
-        end
-    })
-    
-    local function refreshConfigs()
-        Library:RefreshConfigsList(ConfigsDropdown)
-    end
-    
-    ConfigsSection:Button({
-        Name = "Create",
-        Callback = function()
-            if state.configName == "" then 
-                return 
-            end
-            
-            if Library:SaveConfig(state.configName) then
-                state.selectedConfig = state.configName
-                state.configName = ""
-                textboxcfg:Set("")
-                refreshConfigs()
-            end
-        end
-    })
-    
-    ConfigsSection:Button({
-        Name = "Load",
-        Callback = function()
-            if not state.selectedConfig then 
-                return 
-            end
-            Library:LoadConfigFromFile(state.selectedConfig)
-        end
-    })
-    
-    ConfigsSection:Button({
-        Name = "Save",
-        Callback = function()
-            if not state.selectedConfig then 
-                return 
-            end
-            Library:SaveConfig(state.selectedConfig)
-        end
-    })
-    
-    ConfigsSection:Button({
-        Name = "Delete",
-        Callback = function()
-            if not state.selectedConfig then 
-                return 
-            end
-            
-            if Library:DeleteConfig(state.selectedConfig) then
-                refreshConfigs()
-                state.selectedConfig = nil
-            end
-        end
-    })
-    
-    ConfigsSection:Button({
-        Name = "Set as Autoload",
-        Callback = function()
-            if not state.selectedConfig then 
-                return 
-            end
-            Library:SetAutoload(state.selectedConfig)
-        end
-    })
-    
-    ConfigsSection:Button({
-        Name = "Clear Autoload",
-        Callback = function()
-            Library:SetAutoload(nil)
-        end
-    })
-    
-    ConfigsSection:Button({
-        Name = "Refresh",
-        Callback = refreshConfigs
-    })
-    
-    refreshConfigs()
-    
-    return Page
-end
 
 
 end
